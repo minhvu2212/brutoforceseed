@@ -1,0 +1,8 @@
+tkinter
+web3
+requests
+mnemonic
+cryptography
+pillow
+eth-account
+

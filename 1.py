@@ -1,152 +1,359 @@
-import os
+import tkinter as tk
+from tkinter import ttk, scrolledtext
+from threading import Thread
 import random
-from web3 import Web3
-from eth_account import Account
 from mnemonic import Mnemonic
-from multiprocessing import Pool, cpu_count
-import requests
-import time
+from eth_account import Account as EthAccount
+from solders.keypair import Keypair  
+import hashlib
+import asyncio
+import aiohttp
+from concurrent.futures import ThreadPoolExecutor
+import os
+from PIL import Image, ImageTk
 
-# Activate the Mnemonic feature of the eth_account library
-Account.enable_unaudited_hdwallet_features()
-print("Mnemonic feature has been activated.")
+# Constants for the blockchain types
+BLOCKCHAIN_TYPES = {
+    'ETH': {
+        'endpoints': [
+                       'https://ethereum-rpc.publicnode.com',
+                       'https://rpc.immutable.com'
+                     ],
+        'name': 'ETH',
+        'web3': True
+    },
+    'ETC': {
+        'endpoints': [
+                     'https://etc.rivet.link/',
+                      'https://geth-at.etc-network.info',
+                      'https://etc.etcdesktop.com'
+                      ],
+        'name': 'ETC',
+        'web3': True
+    },
+    'BSC': {
+        'endpoints': [
+                     'https://bsc-dataseed.binance.org/',
+                    'https://bsc-dataseed2.defibit.io',
+                     'https://bsc.nodereal.io/',
+                      'https://bsc-dataseed3.defibit.io', 
+                      'https://bsc-dataseed1.defibit.io'
+                      ],
+        'name': 'BSC',
+        'web3': True
+    },
+#    'SOL': {
+ #       'endpoints': ['https://api.mainnet-beta.solana.com'],
+ #       'name': 'Solana',
+ #       'web3': False
+ #   },
+    'ARB': {
+        'endpoints': [
+            'https://arb1.arbitrum.io/rpc',
+            'https://rpc.ankr.com/arbitrum'
+           # 'https://arbitrum.llamarpc.com', X
+           
+           
+        ],
+        'name': 'Arbitrum',
+        'web3': True
+    },
+    'BASE': {
+        'endpoints': [
+            'https://base-rpc.publicnode.com'
+        ],
+        'name': 'Base',
+        'web3': True
+    },
+    'POLYGON': {
+        'endpoints': [
+           # 'https://polygon-rpc.com',
+           'https://polygon-bor-rpc.publicnode.com',
+           'wss://polygon-bor-rpc.publicnode.com'
+        ],
+        'name': 'Polygon',
+        'web3': True
+    },
+}
 
-# Function to parse proxy from the provided string
-def parse_proxy(proxy_string):
-    proxy_parts = proxy_string.strip().split(':')
-    if len(proxy_parts) == 4:
-        return {'http': f"http://{proxy_parts[2]}:{proxy_parts[3]}@{proxy_parts[0]}:{proxy_parts[1]}"}
-    elif len(proxy_parts) == 2:
-        return {'http': f"http://{proxy_parts[0]}:{proxy_parts[1]}"}
-    else:
-        return None
-
-# Read proxy list from the provided string
-proxies_list = """
-43.245.116.88:6603:nuwuqhwp:28qoul6qb9kw
-104.143.252.57:5671:nuwuqhwp:28qoul6qb9kw
-173.0.10.63:6239:nuwuqhwp:28qoul6qb9kw
-98.159.38.252:6552:nuwuqhwp:28qoul6qb9kw
-166.88.224.211:6109:nuwuqhwp:28qoul6qb9kw
-38.154.194.214:9627:nuwuqhwp:28qoul6qb9kw
-134.73.65.65:6617:nuwuqhwp:28qoul6qb9kw
-142.147.132.235:6430:nuwuqhwp:28qoul6qb9kw
-161.123.101.234:6860:nuwuqhwp:28qoul6qb9kw
-31.146.84.142:61669
-94.23.222.122:38251
-51.75.71.110:24430
-178.128.82.105:39993
-128.199.183.41:25726
-51.15.241.5:16379
-213.136.78.200:49420
-194.163.137.106:9050
-144.91.68.111:46896
-176.114.130.149:1080
-51.15.139.15:16379
-154.12.178.107:29985
-163.172.144.132:16379
-194.44.208.62:80
-171.244.10.204:7520
-139.162.238.184:52410
-104.36.166.42:63572
-165.227.196.37:54266
-212.3.112.128:35860
-207.180.198.241:39278
-62.171.131.101:1385
-"""
-
-# Convert proxy list string to list of proxies
-proxies = list(filter(None, [parse_proxy(proxy) for proxy in proxies_list.split('\n')]))
-
-# Function to select a random proxy from the list
-def select_random_proxy():
-    return random.choice(proxies)
-
-# Connect to the Binance Smart Chain
-def connect_to_bsc():
-    bsc = "https://bsc-dataseed.binance.org/"
-    session = requests.Session()
-    while True:
-        try:
-            selected_proxy = select_random_proxy()
-            session.proxies = selected_proxy
-            web3 = Web3(Web3.HTTPProvider(bsc, session=session))
-            print("Connecting to Binance Smart Chain...")
-            assert web3.is_connected(), "Failed to connect to Binance Smart Chain"
-            print("Connected to Binance Smart Chain successfully.")
-            return web3
-        except Exception as e:
-            print(f"Error connecting to Binance Smart Chain with proxy {selected_proxy}: {e}")
-            print("Waiting 1 minute before trying again...")
-            time.sleep(60)  # Chờ 1 phút trước khi thử lại kết nối
-
-web3 = connect_to_bsc()
-
-# Function to get wallet address from seed
-def get_address_from_seed(seed):
-    acct = Account.from_mnemonic(seed)
-    return acct.address
-
-# Function to check BNB balance and save to file if not zero
-def check_balance_and_save(seed):
-    address = get_address_from_seed(seed)
-    balance = web3.eth.get_balance(address)
-    balance_bnb = web3.from_wei(balance, 'ether')
-    if balance_bnb > 0:
-        with open(mnemonic_file_path, 'a+') as file:
-            file.write(f'Mnemonic: {seed} - Address: {address} - Balance: {balance_bnb}\n')
-            print(f"Saved mnemonic with balance: {balance_bnb} BNB to file.")
-    else:
-        print(f"Address {address} has a balance of 0 BNB.")
-
-# Get absolute file path of mnemonic.txt in the same directory as the script
-mnemonic_file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'mnemonic.txt')
+# Kích hoạt tính năng Mnemonic của thư viện eth_account
+EthAccount.enable_unaudited_hdwallet_features()
 
 # Constants for the brute force
-WORDLIST_SIZE = 2048  # Number of words in the BIP39 wordlist
-MISSING_WORDS = 12    # Number of words to brute force
+WORDLIST_SIZE = 2048  # Số lượng từ trong danh sách từ BIP39
+MISSING_WORDS = 12    # Số lượng từ cần brute force
 
-# Get the BIP39 English wordlist
+# Lấy danh sách từ tiếng Anh BIP39
 mnemo = Mnemonic("english")
 wordlist = mnemo.wordlist
-print("Retrieved wordlist from BIP39.")
 
-# Function to generate mnemonic
+# Biến toàn cục để theo dõi trạng thái brute force
+brute_force_running = False
+
+# Biến toàn cục để theo dõi số lượng mnemonics hợp lệ được tìm thấy
+valid_mnemonic_count = 0
+
+# Hàm để ghi log vào GUI
+def log_message(message):
+    log_area.insert(tk.END, message + "\n")
+    log_area.see(tk.END)
+    if "Valid mnemonic" in message:
+        root.after(0, update_valid_count)
+
+# Hàm để cập nhật số lượng mnemonics hợp lệ trong GUI
+def update_valid_count():
+    valid_count_number_label.config(text=f"{valid_mnemonic_count}", foreground="red")
+
+# Hàm để ghi thông tin ví vào GUI và lưu vào tệp
+def log_and_save_wallet_info(wallet_info):
+    wallet_area.insert(tk.END, wallet_info + "\n")
+    wallet_area.see(tk.END)
+    with open("wallet.txt", "a") as file:
+        file.write(wallet_info + "\n")
+
+# Hàm để tạo mnemonic
 def generate_mnemonic():
     missing_words = random.sample(wordlist, MISSING_WORDS)
     return " ".join(missing_words)
 
-# Function to perform the brute force
-def brute_force(_):
-    while True:
-        mnemonic = generate_mnemonic()
+# Hàm để lấy địa chỉ ví từ seed cho các blockchain tương thích Ethereum
+def get_address_from_seed(seed):
+    acct = EthAccount.from_mnemonic(seed)
+    return acct.address
+
+# Hàm kiểm tra số dư và lưu nếu số dư > 0 cho Solana
+async def check_solana_balance_and_save(session, seed):
+    solana_client = BLOCKCHAIN_TYPES['SOL']['endpoints'][0]  # Sử dụng endpoint đầu tiên cho Solana
+    try:
+        seed_hash = hashlib.sha256(seed.encode()).digest()
+        keypair = Keypair.from_seed(seed_hash)
+        pubkey = keypair.pubkey()
+        log_message(f"Checked for {seed}")
+        async with session.post(solana_client, json={"method": "getBalance", "params": [str(pubkey)], "id": 1, "jsonrpc": "2.0"}) as response:
+            result = await response.json()
+            if result['result']['value'] > 0:
+                sol_balance = result['result']['value'] / 1e9
+                log_and_save_wallet_info(f"Found balance: {sol_balance} SOL in wallet {pubkey}")
+    except Exception as e:
+        log_message(f"Error checking Solana balance: {str(e)}")
+
+# Hàm kiểm tra số dư và lưu nếu số dư > 0 cho EVM chains
+async def check_evm_balance_and_save(session, seed, blockchain_type):
+    address = get_address_from_seed(seed)
+    endpoints = BLOCKCHAIN_TYPES[blockchain_type]['endpoints']
+    for attempt in range(len(endpoints)):
+        endpoint = random.choice(endpoints)
         try:
-            if mnemo.check(mnemonic):
-                check_balance_and_save(mnemonic)
-            break  # Thoát khỏi vòng lặp nếu không có lỗi
+            log_message(f"Checked for {seed}")
+            async with session.post(endpoint, json={"jsonrpc":"2.0","method":"eth_getBalance","params":[address, "latest"],"id":1}) as response:
+                result = await response.json()
+                balance = int(result['result'], 16)
+                eth_balance = balance / 1e18  # Chuyển đổi Wei sang Ether
+                if eth_balance > 0:
+                    log_and_save_wallet_info(f"Found balance: {eth_balance} {BLOCKCHAIN_TYPES[blockchain_type]['name']} in wallet {address}")
+                return  # Thoát khỏi vòng lặp nếu thành công
         except Exception as e:
-            print(f"An error occurred: {e}")
-            if "403 Client Error: Forbidden" in str(e):
-                print("Waiting 1 minute before trying again...")
-                time.sleep(60)  # Chờ 1 phút trước khi thử lại
+            if 'Too Many Requests' in str(e):
+                log_message(f"Too many requests for {endpoint}, retrying with another endpoint...")
+                await asyncio.sleep(random.uniform(1, 3))  # Chờ một chút trước khi thử lại
             else:
-                break  # Thoát khỏi vòng lặp nếu lỗi không phải là 403 Forbidden
+                log_message(f"Error checking balance for {BLOCKCHAIN_TYPES[blockchain_type]['name']} at {endpoint}: {str(e)}")
 
-if __name__ == '__main__':
-    # Create a multiprocessing Pool
-    pool = Pool(cpu_count())
+# Logic brute force
+async def brute_force_task(session, selected_blockchains, executor):
+    global valid_mnemonic_count
+    mnemonic = generate_mnemonic()
+    if mnemo.check(mnemonic):
+        log_message(f"Valid mnemonic: {mnemonic}")
+        valid_mnemonic_count += 1  # Tăng số lượng mnemonics hợp lệ
+        tasks = []
+        for blockchain_type in selected_blockchains:
+            if blockchain_type == 'SOL':
+                tasks.append(check_solana_balance_and_save(session, mnemonic))
+            else:
+                tasks.append(check_evm_balance_and_save(session, mnemonic, blockchain_type))
+        await asyncio.gather(*tasks)
 
-    while True:  # Thực hiện vô hạn
-        try:
-            # Thực hiện brute force
-            pool.map(brute_force, range(10000))  # Số lượng attempts có thể thay đổi tùy ý
-        except KeyboardInterrupt:
-            print("Dừng chương trình vô hạn.")
-            break  # Dừng chương trình khi người dùng nhấn Ctrl+C
+async def brute_force(attempts, selected_blockchains, max_workers):
+    global brute_force_running
+    async with aiohttp.ClientSession() as session:
+        tasks = [brute_force_task(session, selected_blockchains, None) for _ in range(attempts)]
+        await asyncio.gather(*tasks)
+    brute_force_running = False  # Đặt brute_force_running thành False khi quá trình hoàn thành
 
-    # Đóng pool
-    pool.close()
-    pool.join()
+# Hàm để bắt đầu brute force
+def start_brute_force(event=None):
+    global brute_force_running
+    if not brute_force_running:
+        brute_force_running = True
+        attempts = int(attempts_entry.get())
+        max_workers = int(threads_entry.get())
+        selected_blockchains = [blockchain_type for blockchain_type, var in blockchain_vars.items() if var.get()]
+        brute_force_thread = Thread(target=lambda: asyncio.run(brute_force(attempts, selected_blockchains, max_workers)))
+        brute_force_thread.start()
+    else:
+        log_message("Brute force is already running.")
 
-    print("Chương trình của bạn đã thực thi xong.")
-    input("Nhấn Enter để thoát...")
+# Hàm để dừng brute force
+def stop_brute_force(event=None):
+    global brute_force_running
+    brute_force_running = False
+    log_message("Brute force stopped.")
+
+# Khởi tạo GUI
+root = tk.Tk()
+root.title("Coin Miner v1.011")
+
+# Thiết lập số lượng CPU
+cpu_count = os.cpu_count()
+
+# Tạo kiểu giao diện tùy chỉnh
+style = ttk.Style()
+style.configure("TFrame", background="#2f2f2f")
+
+# Đặt màu nền và phông chữ
+root.configure(bg="#2f2f2f")
+font_style = ("Söhne", 11)
+header_font_style = ("Söhne", 16, "bold")
+
+# Tên
+name_label = ttk.Label(root, text="COIN MINER (R)", background="#2f2f2f", foreground="#ececec", font=header_font_style)
+name_label.grid(row=0, column=0, pady=10, padx=10, sticky='w')
+
+# Khu vực thông tin chung
+info_label = ttk.Label(root, text="Information", background="#2f2f2f", foreground="#ececec", font=font_style)
+info_label.grid(row=1, column=0, pady=5, padx=10, sticky='w')
+
+version_label = ttk.Label(root, text="Version: 1.011", background="#2f2f2f", foreground="#ececec", font=font_style)
+version_label.grid(row=0, column=1, pady=5, padx=10, sticky='w')
+
+# Số lần thử và số luồng
+attempts_label = ttk.Label(root, text="Number of Attempts", background="#2f2f2f", foreground="#ececec", font=font_style)
+attempts_label.grid(row=6, column=0, pady=5, padx=10, sticky='w')
+attempts_entry = ttk.Entry(root, font=font_style)
+attempts_entry.grid(row=6, column=1, pady=5, padx=10, sticky='w')
+
+threads_label = ttk.Label(root, text="Number of Threads", background="#2f2f2f", foreground="#ececec", font=font_style)
+threads_label.grid(row=7, column=0, pady=5, padx=10, sticky='w')
+threads_entry = ttk.Entry(root, font=font_style)
+threads_entry.grid(row=7, column=1, pady=5, padx=10, sticky='w')
+
+# Nhãn đề xuất số lượng threads tối đa
+max_threads_label = ttk.Label(root, text=f"Max: {cpu_count}", background="#2f2f2f", foreground="red", font=font_style)
+max_threads_label.grid(row=8, column=1, pady=5, padx=10, sticky='w')
+
+# Khu vực chọn blockchain
+blockchain_label = ttk.Label(root, text="Select Blockchains", background="#2f2f2f", foreground="#ececec", font=font_style)
+blockchain_label.grid(row=2, column=0, pady=5, padx=10, sticky='w')
+style = ttk.Style()
+style.configure("TCheckbutton", background="#2f2f2f", foreground="#ececec")
+
+blockchain_vars = {}
+columns = 2  # Số cột để chia
+for i, blockchain_type in enumerate(BLOCKCHAIN_TYPES.keys()):
+    var = tk.BooleanVar()
+    blockchain_vars[blockchain_type] = var
+    chk_btn = ttk.Checkbutton(root, text=BLOCKCHAIN_TYPES[blockchain_type]['name'], variable=var, style="TCheckbutton")
+    chk_btn.grid(row=3 + i // columns, column=i % columns, pady=5, padx=10, sticky='w')
+
+# Nhãn để hiển thị số lượng mnemonics hợp lệ được tìm thấy và nhãn phụ để hiển thị số đếm
+valid_count_frame = ttk.Frame(root, style="TFrame")
+valid_count_frame.grid(row=1, column=2, columnspan=2, pady=10, padx=10, sticky='w')
+
+valid_count_label = ttk.Label(valid_count_frame, text="Valid Mnemonics Found:", background="#2f2f2f", foreground="#ececec", font=font_style)
+valid_count_label.pack(side=tk.LEFT)
+
+valid_count_number_label = ttk.Label(valid_count_frame, text="0", background="#2f2f2f", foreground="red", font=font_style)
+valid_count_number_label.pack(side=tk.LEFT)
+
+style.configure("ButtonFrame.TFrame", background="#2f2f2f")
+
+# Tạo frame với kiểu giao diện đã được định nghĩa
+button_frame = ttk.Frame(root, style="ButtonFrame.TFrame")
+button_frame.grid(row=9, column=0, columnspan=2, pady=10)
+
+# Kích thước mới cho các nút button
+button_width = 150
+button_height = 60
+
+# Load ảnh và điều chỉnh kích thước
+start_image = Image.open("images/start_button.png")
+start_image_hover = Image.open("images/start_button_hover.png")
+start_image_pressed = Image.open("images/start_button_pressed.png")
+stop_image = Image.open("images/stop_button.png")
+stop_image_hover = Image.open("images/stop_button_hover.png")
+stop_image_pressed = Image.open("images/stop_button_pressed.png")
+
+start_image = start_image.resize((button_width, button_height), Image.LANCZOS)
+start_image_hover = start_image_hover.resize((button_width, button_height), Image.LANCZOS)
+start_image_pressed = start_image_pressed.resize((button_width, button_height), Image.LANCZOS)
+stop_image = stop_image.resize((button_width, button_height), Image.LANCZOS)
+stop_image_hover = stop_image_hover.resize((button_width, button_height), Image.LANCZOS)
+stop_image_pressed = stop_image_pressed.resize((button_width, button_height), Image.LANCZOS)
+
+start_photo = ImageTk.PhotoImage(start_image)
+start_photo_hover = ImageTk.PhotoImage(start_image_hover)
+start_photo_pressed = ImageTk.PhotoImage(start_image_pressed)
+stop_photo = ImageTk.PhotoImage(stop_image)
+stop_photo_hover = ImageTk.PhotoImage(stop_image_hover)
+stop_photo_pressed = ImageTk.PhotoImage(stop_image_pressed)
+
+# Tạo canvas để hiển thị nút start
+start_canvas = tk.Canvas(button_frame, width=button_width, height=button_height, bg="#2f2f2f", highlightthickness=0)
+start_canvas.grid(row=0, column=0, pady=5, padx=10, sticky='e')
+start_image_on_canvas = start_canvas.create_image(0, 0, anchor=tk.NW, image=start_photo)
+
+# Tạo canvas để hiển thị nút stop
+stop_canvas = tk.Canvas(button_frame, width=button_width, height=button_height, bg="#2f2f2f", highlightthickness=0)
+stop_canvas.grid(row=1, column=0, pady=5, padx=10, sticky='w')
+stop_image_on_canvas = stop_canvas.create_image(0, 0, anchor=tk.NW, image=stop_photo)
+
+# Thêm sự kiện chuột cho start canvas
+def on_enter_start(event):
+    start_canvas.itemconfig(start_image_on_canvas, image=start_photo_hover)
+
+def on_leave_start(event):
+    start_canvas.itemconfig(start_image_on_canvas, image=start_photo)
+
+def on_click_start(event):
+    start_canvas.itemconfig(start_image_on_canvas, image=start_photo_pressed)
+    start_brute_force()
+
+def on_release_start(event):
+    start_canvas.itemconfig(start_image_on_canvas, image=start_photo)
+
+start_canvas.bind("<Enter>", on_enter_start)
+start_canvas.bind("<Leave>", on_leave_start)
+start_canvas.bind("<Button-1>", on_click_start)
+start_canvas.bind("<ButtonRelease-1>", on_release_start)
+
+# Thêm sự kiện chuột cho stop canvas
+def on_enter_stop(event):
+    stop_canvas.itemconfig(stop_image_on_canvas, image=stop_photo_hover)
+
+def on_leave_stop(event):
+    stop_canvas.itemconfig(stop_image_on_canvas, image=stop_photo)
+
+def on_click_stop(event):
+    stop_canvas.itemconfig(stop_image_on_canvas, image=stop_photo_pressed)
+    stop_brute_force()
+
+def on_release_stop(event):
+    stop_canvas.itemconfig(stop_image_on_canvas, image=stop_photo)
+
+stop_canvas.bind("<Enter>", on_enter_stop)
+stop_canvas.bind("<Leave>", on_leave_stop)
+stop_canvas.bind("<Button-1>", on_click_stop)
+stop_canvas.bind("<ButtonRelease-1>", on_release_stop)
+
+# Khu vực log
+log_area = scrolledtext.ScrolledText(root, width=80, height=13, bg="#0d0d0d", fg="#ececec", font=("Helvetica", 8), wrap=tk.WORD)
+log_area.grid(row=2, column=2, rowspan=6, pady=5, padx=10, sticky='nw')
+
+# Khu vực thông tin ví
+wallet_label = ttk.Label(root, text="Wallet Information", background="#2f2f2f", foreground="#ececec", font=font_style)
+wallet_label.grid(row=8, column=2, pady=5, padx=10, sticky='w')
+wallet_area = scrolledtext.ScrolledText(root, width=80, height=10, bg="#0d0d0d", fg="#ececec", font=("Helvetica", 8), wrap=tk.WORD)
+wallet_area.grid(row=9, column=2, pady=5, padx=10, sticky='nw')
+
+root.mainloop()

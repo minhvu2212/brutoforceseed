@@ -1,0 +1,10 @@
+Blockchain: ETH
+Address: 0x1234567890123456789012345678901234567890
+Balance: 1.2345
+Mnemonic: abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon
+--------------------------------------------------
+Blockchain: SOL
+Address: ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghi
+Balance: 2.3456
+Mnemonic: abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon
+--------------------------------------------------
